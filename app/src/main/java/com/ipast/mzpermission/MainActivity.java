@@ -23,8 +23,8 @@ public class MainActivity extends AppCompatActivity {
                 .registerManagerExternalStorageResult()
                 .registerRequestInstallPackagesResult()
                 .registerBindDeviceAdminResult();
-        //requestExternalStoragePermission();
-        requestBindDeviceAdmin();
+        requestExternalStoragePermission();
+       // requestBindDeviceAdmin();
     }
 
     private void requestBindDeviceAdmin(){

@@ -304,18 +304,7 @@ public class MzPermission {
     public void launchExternalStorage(OnResultCallback callback) {
         this.onResultCallback = callback;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            if (onResultCallback != null && onResultCallback instanceof OnDialogResultCallback) {
-                OnDialogResultCallback onDialogResultCallback = (OnDialogResultCallback) onResultCallback;
-                onDialogResultCallback.showRequestDialog(new OnLaunchCallback() {
-                    @Override
-                    public void allowLaunch() {
-                        getSpecialLauncher(MANAGE_EXTERNAL_STORAGE).launch(null);
-                    }
-                });
-            } else {
-                getSpecialLauncher(MANAGE_EXTERNAL_STORAGE).launch(null);
-            }
-
+            launchManagerExternalStorage(callback);
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             this.request(EXTERNAL_STORAGE).launch(callback);
         } else {
