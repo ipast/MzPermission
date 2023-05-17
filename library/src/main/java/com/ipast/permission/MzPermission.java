@@ -1,6 +1,7 @@
 package com.ipast.permission;
 
 import android.Manifest;
+import android.accessibilityservice.AccessibilityService;
 import android.content.Context;
 import android.os.Build;
 
@@ -18,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 
 import static android.Manifest.permission.ACCESS_NOTIFICATION_POLICY;
+import static android.Manifest.permission.BIND_ACCESSIBILITY_SERVICE;
 import static android.Manifest.permission.BIND_DEVICE_ADMIN;
 import static android.Manifest.permission.MANAGE_EXTERNAL_STORAGE;
 import static android.Manifest.permission.REQUEST_INSTALL_PACKAGES;
@@ -114,6 +116,12 @@ public class MzPermission {
                         caller.registerForActivityResult(new ResultContracts.RequestInstallPackagesResult(), specialCallback)
                 );
                 break;
+            case BIND_ACCESSIBILITY_SERVICE:
+                specialLauncherMap.put(
+                        specialPermission,
+                        caller.registerForActivityResult(new ResultContracts.AccessibilityServiceResult(accessibilityServiceClz), specialCallback)
+                );
+                break;
         }
     }
 
@@ -138,6 +146,20 @@ public class MzPermission {
                 });
     }
 
+    private Class<? extends AccessibilityService> accessibilityServiceClz;
+
+    /**
+     * android.permission.BIND_ACCESSIBILITY_SERVICE
+     *
+     * @param accessibilityServiceClz
+     * @return
+     */
+    public MzPermission registerAccessibilityServiceResult(@NonNull Class<? extends AccessibilityService> accessibilityServiceClz) {
+        this.accessibilityServiceClz = accessibilityServiceClz;
+        combine(BIND_ACCESSIBILITY_SERVICE);
+        return this;
+    }
+
     /**
      * Permission is only granted to system app
      * android.permission.WRITE_SETTINGS
@@ -158,6 +180,7 @@ public class MzPermission {
         combine(BIND_DEVICE_ADMIN);
         return this;
     }
+
     /**
      * android.permission.REQUEST_INSTALL_PACKAGES
      *
@@ -167,6 +190,7 @@ public class MzPermission {
         combine(REQUEST_INSTALL_PACKAGES);
         return this;
     }
+
     /**
      * android.permission.MANAGE_EXTERNAL_STORAGE
      *
@@ -203,6 +227,7 @@ public class MzPermission {
             onResultCallback.onPermissionGranted();
         }
     }
+
     /**
      * android.permission.REQUEST_INSTALL_PACKAGES
      *
@@ -231,6 +256,7 @@ public class MzPermission {
             onResultCallback.onPermissionGranted();
         }
     }
+
     /**
      * Permission is only granted to system app
      * android.permission.WRITE_SETTINGS
@@ -363,6 +389,35 @@ public class MzPermission {
                 return;
             }
         }
+        if (onResultCallback != null) {
+            onResultCallback.onPermissionGranted();
+        }
+    }
+
+    /**
+     * android.permission.BIND_ACCESSIBILITY_SERVICE
+     *
+     * @param callback
+     */
+    public void launchAccessibilityService(OnResultCallback callback) {
+        this.onResultCallback = callback;
+
+        if (!VerifierUtils.accessibilityServiceEnabled(context,accessibilityServiceClz)) {
+            if (onResultCallback != null && onResultCallback instanceof OnDialogResultCallback) {
+                OnDialogResultCallback onDialogResultCallback = (OnDialogResultCallback) onResultCallback;
+                onDialogResultCallback.showRequestDialog(new OnLaunchCallback() {
+                    @Override
+                    public void allowLaunch() {
+                        getSpecialLauncher(BIND_ACCESSIBILITY_SERVICE).launch(null);
+                    }
+                });
+            } else {
+                getSpecialLauncher(BIND_ACCESSIBILITY_SERVICE).launch(null);
+            }
+
+            return;
+        }
+
         if (onResultCallback != null) {
             onResultCallback.onPermissionGranted();
         }

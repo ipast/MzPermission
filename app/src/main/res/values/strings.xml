@@ -1,3 +1,7 @@
 <resources>
     <string name="app_name">MzPermission</string>
+
+    <string name="as_manifest_label">Accessibility Service Label</string>
+    <string name="as_manifest_description">Accessibility Service Description</string>
+    <string name="as_config_description">Accessibility Service Config Description</string>
 </resources>

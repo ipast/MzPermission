@@ -1,5 +1,6 @@
 package com.ipast.permission;
 
+import android.accessibilityservice.AccessibilityService;
 import android.app.admin.DevicePolicyManager;
 import android.content.ComponentName;
 import android.content.Context;
@@ -147,6 +148,28 @@ public class ResultContracts {
         @Override
         public Boolean parseResult(int resultCode, @Nullable Intent intent) {
             return areNotificationsEnabled(mContext);
+        }
+    }
+
+    public static class AccessibilityServiceResult extends ActivityResultContract<Void, Boolean> {
+        private Context mContext;
+        private Class<? extends AccessibilityService> serviceClz;
+
+        public AccessibilityServiceResult(Class<? extends AccessibilityService> serviceClz) {
+            this.serviceClz = serviceClz;
+        }
+
+        @NonNull
+        @Override
+        public Intent createIntent(@NonNull Context context, Void input) {
+            this.mContext = context;
+            Intent intent = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
+            return intent;
+        }
+
+        @Override
+        public Boolean parseResult(int resultCode, @Nullable Intent intent) {
+            return VerifierUtils.accessibilityServiceEnabled(mContext,serviceClz);
         }
     }
 }
