@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService;
 import android.app.admin.DevicePolicyManager;
 import android.content.ComponentName;
 import android.content.Context;
+import android.location.LocationManager;
 import android.os.Build;
 import android.os.Environment;
 import android.provider.Settings;
@@ -118,4 +119,17 @@ public class VerifierUtils {
         }
         return false;
     }
+
+    /**
+     * This provider determines location using GNSS satellites.
+     *
+     * @param context
+     * @return
+     */
+    public static boolean isGPSProviderEnabled(Context context) {
+        LocationManager locationManager = (LocationManager) context.getSystemService(Context.LOCATION_SERVICE);
+        return locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER);
+    }
+
+
 }

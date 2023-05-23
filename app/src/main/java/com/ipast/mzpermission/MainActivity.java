@@ -24,11 +24,48 @@ public class MainActivity extends AppCompatActivity {
                 .registerManagerExternalStorageResult()
                 .registerRequestInstallPackagesResult()
                 .registerBindDeviceAdminResult()
-                .registerAccessibilityServiceResult(MyAccessibilityService.class);
+                .registerAccessibilityServiceResult(MyAccessibilityService.class)
+                .registerLocationSourceSettingsResult();
         // requestExternalStoragePermission();
         // requestBindDeviceAdmin();
-        requestAccessibilityService();
+        // requestAccessibilityService();
+        requestLocationSourceSettings();
     }
+
+    private void requestLocationSourceSettings() {
+        mzPermission.launchLocationSourceSettings(new MzPermission.OnDialogResultCallback() {
+            @Override
+            public void showRequestDialog(MzPermission.OnLaunchCallback callback) {
+                MessageDialog.show("权限申请", "需要使用位置信息权限，请手动开启！", "确定", "取消")
+                        .setOkButton(new OnDialogButtonClickListener<MessageDialog>() {
+                            @Override
+                            public boolean onClick(MessageDialog baseDialog, View v) {
+                                callback.allowLaunch();
+                                return false;
+                            }
+                        })
+                        .setCancelButton(new OnDialogButtonClickListener<MessageDialog>() {
+                            @Override
+                            public boolean onClick(MessageDialog dialog, View v) {
+
+                                return false;
+                            }
+                        });
+            }
+
+            @Override
+            public void onPermissionGranted() {
+                Log.d(TAG, "onPermissionGranted()");
+            }
+
+            @Override
+            public void onPermissionsDenied(String... permissions) {
+                Log.d(TAG, "onPermissionsDenied()");
+            }
+        });
+
+    }
+
     private void requestAccessibilityService() {
         mzPermission.launchAccessibilityService(new MzPermission.OnDialogResultCallback() {
             @Override
@@ -62,6 +99,7 @@ public class MainActivity extends AppCompatActivity {
         });
 
     }
+
     private void requestBindDeviceAdmin() {
         mzPermission.launchBindDeviceAdmin(new MzPermission.OnResultCallback() {
             @Override

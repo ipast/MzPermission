@@ -22,6 +22,7 @@ import static android.app.Activity.RESULT_OK;
 import static com.ipast.permission.VerifierUtils.areNotificationsEnabled;
 import static com.ipast.permission.VerifierUtils.canWrite;
 import static com.ipast.permission.VerifierUtils.isExternalStorageManager;
+import static com.ipast.permission.VerifierUtils.isGPSProviderEnabled;
 
 
 /**
@@ -172,4 +173,21 @@ public class ResultContracts {
             return VerifierUtils.accessibilityServiceEnabled(mContext,serviceClz);
         }
     }
+    public static class LocationSourceSettingsResult extends ActivityResultContract<Void, Boolean> {
+        private Context mContext;
+
+        @NonNull
+        @Override
+        public Intent createIntent(@NonNull Context context, Void input) {
+            this.mContext = context;
+            Intent intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+            return intent;
+        }
+
+        @Override
+        public Boolean parseResult(int resultCode, @Nullable Intent intent) {
+            return isGPSProviderEnabled(mContext);
+        }
+    }
+
 }

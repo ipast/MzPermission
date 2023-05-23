@@ -4,6 +4,7 @@ import android.Manifest;
 import android.accessibilityservice.AccessibilityService;
 import android.content.Context;
 import android.os.Build;
+import android.provider.Settings;
 
 import androidx.activity.ComponentActivity;
 import androidx.activity.result.ActivityResultCallback;
@@ -122,6 +123,12 @@ public class MzPermission {
                         caller.registerForActivityResult(new ResultContracts.AccessibilityServiceResult(accessibilityServiceClz), specialCallback)
                 );
                 break;
+            case Settings.ACTION_LOCATION_SOURCE_SETTINGS:
+                specialLauncherMap.put(
+                        specialPermission,
+                        caller.registerForActivityResult(new ResultContracts.LocationSourceSettingsResult(), specialCallback)
+                );
+                break;
         }
     }
 
@@ -147,6 +154,11 @@ public class MzPermission {
     }
 
     private Class<? extends AccessibilityService> accessibilityServiceClz;
+
+    public MzPermission registerLocationSourceSettingsResult() {
+        combine(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+        return this;
+    }
 
     /**
      * android.permission.BIND_ACCESSIBILITY_SERVICE
@@ -222,6 +234,34 @@ public class MzPermission {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             normalLauncher.launch(normalPermissions);
             return;
+        }
+        if (onResultCallback != null) {
+            onResultCallback.onPermissionGranted();
+        }
+    }
+
+    /**
+     * Show settings to allow configuration of current location sources.
+     *
+     * @param callback
+     */
+    public void launchLocationSourceSettings(OnResultCallback callback) {
+        this.onResultCallback = callback;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (!VerifierUtils.isGPSProviderEnabled(context)) {
+                if (onResultCallback != null && onResultCallback instanceof OnDialogResultCallback) {
+                    OnDialogResultCallback onDialogResultCallback = (OnDialogResultCallback) onResultCallback;
+                    onDialogResultCallback.showRequestDialog(new OnLaunchCallback() {
+                        @Override
+                        public void allowLaunch() {
+                            getSpecialLauncher(Settings.ACTION_LOCATION_SOURCE_SETTINGS).launch(null);
+                        }
+                    });
+                } else {
+                    getSpecialLauncher(Settings.ACTION_LOCATION_SOURCE_SETTINGS).launch(null);
+                }
+                return;
+            }
         }
         if (onResultCallback != null) {
             onResultCallback.onPermissionGranted();
@@ -402,7 +442,7 @@ public class MzPermission {
     public void launchAccessibilityService(OnResultCallback callback) {
         this.onResultCallback = callback;
 
-        if (!VerifierUtils.accessibilityServiceEnabled(context,accessibilityServiceClz)) {
+        if (!VerifierUtils.accessibilityServiceEnabled(context, accessibilityServiceClz)) {
             if (onResultCallback != null && onResultCallback instanceof OnDialogResultCallback) {
                 OnDialogResultCallback onDialogResultCallback = (OnDialogResultCallback) onResultCallback;
                 onDialogResultCallback.showRequestDialog(new OnLaunchCallback() {
