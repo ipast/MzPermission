@@ -1,18 +1,32 @@
 package com.ipast.permission;
 
-import android.Manifest;
 import android.accessibilityservice.AccessibilityService;
 import android.content.Context;
 import android.os.Build;
 import android.provider.Settings;
+import android.util.Log;
 
 import androidx.activity.ComponentActivity;
 import androidx.activity.result.ActivityResultCallback;
 import androidx.activity.result.ActivityResultCaller;
 import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContract;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.fragment.app.Fragment;
+
+import com.ipast.permission.callback.DialogRequestResultCallback;
+import com.ipast.permission.callback.PermissionCheckCallback;
+import com.ipast.permission.callback.PermissionRequestCallback;
+import com.ipast.permission.callback.RequestResultCallback;
+import com.ipast.permission.contract.AccessNotificationPolicyResultContract;
+import com.ipast.permission.contract.AccessibilityServiceResultContract;
+import com.ipast.permission.contract.AppManagerExternalStorageResultContract;
+import com.ipast.permission.contract.BindDeviceAdminResultContract;
+import com.ipast.permission.contract.LocationSourceSettingsResultContract;
+import com.ipast.permission.contract.RequestInstallPackagesResultContract;
+import com.ipast.permission.contract.WriteSettingsResultContract;
+import com.ipast.permission.utils.PermissionCheckUtils;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -25,10 +39,12 @@ import static android.Manifest.permission.BIND_DEVICE_ADMIN;
 import static android.Manifest.permission.MANAGE_EXTERNAL_STORAGE;
 import static android.Manifest.permission.REQUEST_INSTALL_PACKAGES;
 import static android.Manifest.permission.WRITE_SETTINGS;
-import static com.ipast.permission.VerifierUtils.areNotificationsEnabled;
-import static com.ipast.permission.VerifierUtils.canRequestPackageInstalls;
-import static com.ipast.permission.VerifierUtils.canWrite;
-import static com.ipast.permission.VerifierUtils.isExternalStorageManager;
+import static com.ipast.permission.utils.PermissionCheckUtils.areNotificationsEnabled;
+import static com.ipast.permission.utils.PermissionCheckUtils.canRequestPackageInstalls;
+import static com.ipast.permission.utils.PermissionCheckUtils.canWrite;
+import static com.ipast.permission.utils.PermissionCheckUtils.isExternalStorageManager;
+import static com.ipast.permission.utils.PermissionCheckUtils.isGPSProviderEnabled;
+import static com.ipast.permission.Permissions.EXTERNAL_STORAGE;
 
 
 /**
@@ -37,437 +53,78 @@ import static com.ipast.permission.VerifierUtils.isExternalStorageManager;
  * date:2021/12/1
  */
 public class MzPermission {
-    private ActivityResultCaller caller;
-    private Context context;
-    private String[] normalPermissions;
-    private ActivityResultLauncher<String[]> normalLauncher;
-    private HashMap<String, ActivityResultLauncher<Void>> specialLauncherMap;
-    private OnResultCallback onResultCallback;
-    private ActivityResultCallback<Boolean> specialCallback;
+    private final String TAG = getClass().getSimpleName();
+    private ActivityResultCaller mCaller;
+    private Context mContext;
+
+    private String[] mNormalPermissions;
+
+    private ActivityResultLauncher<String[]> mNormalLauncher;
+    private HashMap<String, ActivityResultLauncher<Void>> mSpecialLaunchers;
+
+    private RequestResultCallback mRequestResultCallback;
+    private ActivityResultCallback<Boolean> mSpecialCallback;
 
 
     public MzPermission(@NonNull ComponentActivity activity) {
-        this.caller = activity;
-        this.context = activity;
-        registerForActivityResult();
+        this.mCaller = activity;
+        this.mContext = activity;
     }
 
     public MzPermission(@NonNull Fragment fragment) {
-        this.caller = fragment;
-        this.context = fragment.getContext();
-        registerForActivityResult();
+        this.mCaller = fragment;
+        this.mContext = fragment.getContext();
     }
 
     public MzPermission request(@NonNull String... permissions) {
-        this.normalPermissions = permissions;
+        this.mNormalPermissions = permissions;
         return this;
     }
 
-    private void combine(@NonNull String specialPermission) {
-        if (specialLauncherMap == null) {
-            specialLauncherMap = new HashMap<>();
+
+    private void addActivityResultLauncher(@NonNull String specialPermission) {
+        ActivityResultLauncher<Void> launcher = getActivityResultLauncher(specialPermission);
+        if (launcher == null) {
+            return;
         }
-        if (specialCallback == null) {
-            specialCallback = new ActivityResultCallback<Boolean>() {
-                @Override
-                public void onActivityResult(Boolean result) {
-                    if (onResultCallback != null) {
-                        if (result) {
-                            onResultCallback.onPermissionGranted();
-                        } else {
-                            onResultCallback.onPermissionsDenied();
-                        }
-                    }
-                }
-            };
-        }
-        putForActivityResult(specialPermission);
+        mSpecialLaunchers.put(specialPermission, launcher);
     }
 
-    private void putForActivityResult(@NonNull String specialPermission) {
-        switch (specialPermission) {
+    private ActivityResultLauncher<Void> getActivityResultLauncher(String permission) {
+        ActivityResultContract<Void, Boolean> contract = getActivityResultContract(permission);
+        if (contract == null) {
+            return null;
+        }
+        return mCaller.registerForActivityResult(contract, mSpecialCallback);
+    }
+
+    private ActivityResultContract<Void, Boolean> getActivityResultContract(String permission) {
+        switch (permission) {
             case MANAGE_EXTERNAL_STORAGE:
-                specialLauncherMap.put(
-                        specialPermission,
-                        caller.registerForActivityResult(new ResultContracts.AppManagerExternalStorageResult(), specialCallback)
-                );
-                break;
+                return new AppManagerExternalStorageResultContract();
             case WRITE_SETTINGS:
-                specialLauncherMap.put(
-                        specialPermission,
-                        caller.registerForActivityResult(new ResultContracts.WriteSettingsResult(), specialCallback)
-                );
-
-                break;
+                return new WriteSettingsResultContract();
             case BIND_DEVICE_ADMIN:
-                specialLauncherMap.put(
-                        specialPermission,
-                        caller.registerForActivityResult(new ResultContracts.BindDeviceAdminResult(), specialCallback)
-                );
-                break;
+                return new BindDeviceAdminResultContract();
             case ACCESS_NOTIFICATION_POLICY:
-                specialLauncherMap.put(
-                        specialPermission,
-                        caller.registerForActivityResult(new ResultContracts.AccessNotificationPolicyResult(), specialCallback)
-                );
-                break;
+                return new AccessNotificationPolicyResultContract();
             case REQUEST_INSTALL_PACKAGES:
-                specialLauncherMap.put(
-                        specialPermission,
-                        caller.registerForActivityResult(new ResultContracts.RequestInstallPackagesResult(), specialCallback)
-                );
-                break;
+                return new RequestInstallPackagesResultContract();
             case BIND_ACCESSIBILITY_SERVICE:
-                specialLauncherMap.put(
-                        specialPermission,
-                        caller.registerForActivityResult(new ResultContracts.AccessibilityServiceResult(accessibilityServiceClz), specialCallback)
-                );
-                break;
+                return new AccessibilityServiceResultContract(mAccessibilityServiceClz);
             case Settings.ACTION_LOCATION_SOURCE_SETTINGS:
-                specialLauncherMap.put(
-                        specialPermission,
-                        caller.registerForActivityResult(new ResultContracts.LocationSourceSettingsResult(), specialCallback)
-                );
-                break;
-        }
-    }
-
-    private void registerForActivityResult() {
-        this.normalLauncher = caller.registerForActivityResult(new ActivityResultContracts.RequestMultiplePermissions(),
-                result -> {
-                    boolean isGranted = true;
-                    List<String> deniedPermissions = new ArrayList();
-                    for (Map.Entry<String, Boolean> entry : result.entrySet()) {
-                        if (!entry.getValue()) {
-                            isGranted = false;
-                            deniedPermissions.add(entry.getKey());
-                        }
-                    }
-                    if (onResultCallback != null) {
-                        if (isGranted) {
-                            onResultCallback.onPermissionGranted();
-                        } else {
-                            onResultCallback.onPermissionsDenied(deniedPermissions.toArray(new String[deniedPermissions.size()]));
-                        }
-                    }
-                });
-    }
-
-    private Class<? extends AccessibilityService> accessibilityServiceClz;
-
-    public MzPermission registerLocationSourceSettingsResult() {
-        combine(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
-        return this;
-    }
-
-    /**
-     * android.permission.BIND_ACCESSIBILITY_SERVICE
-     *
-     * @param accessibilityServiceClz
-     * @return
-     */
-    public MzPermission registerAccessibilityServiceResult(@NonNull Class<? extends AccessibilityService> accessibilityServiceClz) {
-        this.accessibilityServiceClz = accessibilityServiceClz;
-        combine(BIND_ACCESSIBILITY_SERVICE);
-        return this;
-    }
-
-    /**
-     * Permission is only granted to system app
-     * android.permission.WRITE_SETTINGS
-     *
-     * @return
-     */
-    public MzPermission registerWriteSettingsResult() {
-        combine(WRITE_SETTINGS);
-        return this;
-    }
-
-    /**
-     * android.permission.BIND_DEVICE_ADMIN
-     *
-     * @return
-     */
-    public MzPermission registerBindDeviceAdminResult() {
-        combine(BIND_DEVICE_ADMIN);
-        return this;
-    }
-
-    /**
-     * android.permission.REQUEST_INSTALL_PACKAGES
-     *
-     * @return
-     */
-    public MzPermission registerRequestInstallPackagesResult() {
-        combine(REQUEST_INSTALL_PACKAGES);
-        return this;
-    }
-
-    /**
-     * android.permission.MANAGE_EXTERNAL_STORAGE
-     *
-     * @return
-     */
-    public MzPermission registerManagerExternalStorageResult() {
-        combine(MANAGE_EXTERNAL_STORAGE);
-        return this;
-    }
-
-    /**
-     * android.permission.ACCESS_NOTIFICATION_POLICY
-     *
-     * @return
-     */
-    public MzPermission registerAccessNotificationPolicyResult() {
-        combine(ACCESS_NOTIFICATION_POLICY);
-        return this;
-    }
-
-
-    /**
-     * 非特殊权限申请
-     *
-     * @param callback
-     */
-    public void launch(OnResultCallback callback) {
-        this.onResultCallback = callback;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            normalLauncher.launch(normalPermissions);
-            return;
-        }
-        if (onResultCallback != null) {
-            onResultCallback.onPermissionGranted();
-        }
-    }
-
-    /**
-     * Show settings to allow configuration of current location sources.
-     *
-     * @param callback
-     */
-    public void launchLocationSourceSettings(OnResultCallback callback) {
-        this.onResultCallback = callback;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (!VerifierUtils.isGPSProviderEnabled(context)) {
-                if (onResultCallback != null && onResultCallback instanceof OnDialogResultCallback) {
-                    OnDialogResultCallback onDialogResultCallback = (OnDialogResultCallback) onResultCallback;
-                    onDialogResultCallback.showRequestDialog(new OnLaunchCallback() {
-                        @Override
-                        public void allowLaunch() {
-                            getSpecialLauncher(Settings.ACTION_LOCATION_SOURCE_SETTINGS).launch(null);
-                        }
-                    });
-                } else {
-                    getSpecialLauncher(Settings.ACTION_LOCATION_SOURCE_SETTINGS).launch(null);
-                }
-                return;
-            }
-        }
-        if (onResultCallback != null) {
-            onResultCallback.onPermissionGranted();
-        }
-    }
-
-    /**
-     * android.permission.REQUEST_INSTALL_PACKAGES
-     *
-     * @param callback
-     */
-    public void launchRequestInstallPackages(OnResultCallback callback) {
-        this.onResultCallback = callback;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            if (!canRequestPackageInstalls(context)) {
-                if (onResultCallback != null && onResultCallback instanceof OnDialogResultCallback) {
-                    OnDialogResultCallback onDialogResultCallback = (OnDialogResultCallback) onResultCallback;
-                    onDialogResultCallback.showRequestDialog(new OnLaunchCallback() {
-                        @Override
-                        public void allowLaunch() {
-                            getSpecialLauncher(REQUEST_INSTALL_PACKAGES).launch(null);
-                        }
-                    });
-                } else {
-                    getSpecialLauncher(REQUEST_INSTALL_PACKAGES).launch(null);
-                }
-
-                return;
-            }
-        }
-        if (onResultCallback != null) {
-            onResultCallback.onPermissionGranted();
-        }
-    }
-
-    /**
-     * Permission is only granted to system app
-     * android.permission.WRITE_SETTINGS
-     *
-     * @param callback
-     */
-    public void launchWriteSettings(OnResultCallback callback) {
-        this.onResultCallback = callback;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (!canWrite(context)) {
-                if (onResultCallback != null && onResultCallback instanceof OnDialogResultCallback) {
-                    OnDialogResultCallback onDialogResultCallback = (OnDialogResultCallback) onResultCallback;
-                    onDialogResultCallback.showRequestDialog(new OnLaunchCallback() {
-                        @Override
-                        public void allowLaunch() {
-                            getSpecialLauncher(WRITE_SETTINGS).launch(null);
-                        }
-                    });
-                } else {
-                    getSpecialLauncher(WRITE_SETTINGS).launch(null);
-                }
-                return;
-            }
-        }
-        if (onResultCallback != null) {
-            onResultCallback.onPermissionGranted();
-        }
-    }
-
-    /**
-     * android.permission.MANAGE_EXTERNAL_STORAGE
-     *
-     * @param callback
-     */
-    public void launchManagerExternalStorage(OnResultCallback callback) {
-        this.onResultCallback = callback;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            if (!isExternalStorageManager()) {
-                if (onResultCallback != null && onResultCallback instanceof OnDialogResultCallback) {
-                    OnDialogResultCallback onDialogResultCallback = (OnDialogResultCallback) onResultCallback;
-                    onDialogResultCallback.showRequestDialog(new OnLaunchCallback() {
-                        @Override
-                        public void allowLaunch() {
-                            getSpecialLauncher(MANAGE_EXTERNAL_STORAGE).launch(null);
-                        }
-                    });
-                } else {
-                    getSpecialLauncher(MANAGE_EXTERNAL_STORAGE).launch(null);
-                }
-
-                return;
-            }
-        }
-        if (onResultCallback != null) {
-            onResultCallback.onPermissionGranted();
-        }
-    }
-
-    public static final String[] EXTERNAL_STORAGE = new String[]{
-            Manifest.permission.READ_EXTERNAL_STORAGE,
-            Manifest.permission.WRITE_EXTERNAL_STORAGE
-    };
-
-    /**
-     * android.permission.MANAGE_EXTERNAL_STORAGE
-     * android.permission.READ_EXTERNAL_STORAGE
-     * android.permission.WRITE_EXTERNAL_STORAGE
-     *
-     * @param callback
-     */
-    public void launchExternalStorage(OnResultCallback callback) {
-        this.onResultCallback = callback;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            launchManagerExternalStorage(callback);
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            this.request(EXTERNAL_STORAGE).launch(callback);
-        } else {
-            if (onResultCallback != null) {
-                onResultCallback.onPermissionGranted();
-            }
-        }
-    }
-
-    /**
-     * android.permission.BIND_DEVICE_ADMIN
-     *
-     * @param callback
-     */
-    public void launchBindDeviceAdmin(OnResultCallback callback) {
-        this.onResultCallback = callback;
-        if (!VerifierUtils.isAdminActive(context)) {
-            if (onResultCallback != null && onResultCallback instanceof OnDialogResultCallback) {
-                OnDialogResultCallback onDialogResultCallback = (OnDialogResultCallback) onResultCallback;
-                onDialogResultCallback.showRequestDialog(new OnLaunchCallback() {
-                    @Override
-                    public void allowLaunch() {
-                        getSpecialLauncher(BIND_DEVICE_ADMIN).launch(null);
-                    }
-                });
-            } else {
-                getSpecialLauncher(BIND_DEVICE_ADMIN).launch(null);
-            }
-            return;
-        }
-        if (onResultCallback != null) {
-            onResultCallback.onPermissionGranted();
-        }
-    }
-
-    /**
-     * android.permission.ACCESS_NOTIFICATION_POLICY
-     *
-     * @param callback
-     */
-    public void launchAccessNotificationPolicy(OnResultCallback callback) {
-        this.onResultCallback = callback;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (!areNotificationsEnabled(context)) {
-                if (onResultCallback != null && onResultCallback instanceof OnDialogResultCallback) {
-                    OnDialogResultCallback onDialogResultCallback = (OnDialogResultCallback) onResultCallback;
-                    onDialogResultCallback.showRequestDialog(new OnLaunchCallback() {
-                        @Override
-                        public void allowLaunch() {
-                            getSpecialLauncher(ACCESS_NOTIFICATION_POLICY).launch(null);
-                        }
-                    });
-                } else {
-                    getSpecialLauncher(ACCESS_NOTIFICATION_POLICY).launch(null);
-                }
-                return;
-            }
-        }
-        if (onResultCallback != null) {
-            onResultCallback.onPermissionGranted();
-        }
-    }
-
-    /**
-     * android.permission.BIND_ACCESSIBILITY_SERVICE
-     *
-     * @param callback
-     */
-    public void launchAccessibilityService(OnResultCallback callback) {
-        this.onResultCallback = callback;
-
-        if (!VerifierUtils.accessibilityServiceEnabled(context, accessibilityServiceClz)) {
-            if (onResultCallback != null && onResultCallback instanceof OnDialogResultCallback) {
-                OnDialogResultCallback onDialogResultCallback = (OnDialogResultCallback) onResultCallback;
-                onDialogResultCallback.showRequestDialog(new OnLaunchCallback() {
-                    @Override
-                    public void allowLaunch() {
-                        getSpecialLauncher(BIND_ACCESSIBILITY_SERVICE).launch(null);
-                    }
-                });
-            } else {
-                getSpecialLauncher(BIND_ACCESSIBILITY_SERVICE).launch(null);
-            }
-
-            return;
-        }
-
-        if (onResultCallback != null) {
-            onResultCallback.onPermissionGranted();
+                return new LocationSourceSettingsResultContract();
+            default:
+                Log.d(TAG, "unknown permission : " + permission);
+                return null;
         }
     }
 
     private ActivityResultLauncher<Void> getSpecialLauncher(String permission) {
         ActivityResultLauncher<Void> launcher = null;
-        if (specialLauncherMap != null) {
-            if (specialLauncherMap.containsKey(permission)) {
-                launcher = specialLauncherMap.get(permission);
+        if (mSpecialLaunchers != null) {
+            if (mSpecialLaunchers.containsKey(permission)) {
+                launcher = mSpecialLaunchers.get(permission);
             }
         }
         if (launcher == null) {
@@ -478,23 +135,338 @@ public class MzPermission {
 
 
     /**
-     * 权限申请回调接口
+     * 注册普通权限申请
+     *
+     * @return
      */
-    public interface OnResultCallback {
+    public MzPermission registerForActivityResult() {
+        this.mNormalLauncher = mCaller.registerForActivityResult(new ActivityResultContracts.RequestMultiplePermissions(),
+                new ActivityResultCallback<Map<String, Boolean>>() {
+                    @Override
+                    public void onActivityResult(Map<String, Boolean> result) {
+                        execRequestPermissionResult(result);
+                    }
+                });
+        return this;
+    }
 
-        void onPermissionGranted();
+    private void execRequestPermissionResult(Map<String, Boolean> result) {
+        List<String> deniedPermissionList = new ArrayList();
+        for (Map.Entry<String, Boolean> entry : result.entrySet()) {
+            if (entry.getValue()) {
+                continue;
+            }
+            deniedPermissionList.add(entry.getKey());
+        }
+        int deniedPermissionSize = deniedPermissionList.size();
+        boolean isGranted = deniedPermissionSize == 0;
+        String[] deniedPermissions = deniedPermissionList.toArray(new String[deniedPermissionSize]);
+        execRequestPermissionResultCallback(isGranted, deniedPermissions);
+    }
 
-        void onPermissionsDenied(String... permissions);
+    private void execRequestPermissionResultCallback(boolean isGranted, String[] deniedPermissions) {
+        if (mRequestResultCallback == null) {
+            return;
+        }
+        if (isGranted) {
+            mRequestResultCallback.onPermissionGranted();
+            return;
+        }
+        mRequestResultCallback.onPermissionsDenied(deniedPermissions);
+    }
+
+    private void combineActivityResultLauncher(@NonNull String specialPermission) {
+        if (mSpecialLaunchers == null) {
+            mSpecialLaunchers = new HashMap<>();
+        }
+        if (mSpecialCallback == null) {
+            mSpecialCallback = new ActivityResultCallback<Boolean>() {
+                @Override
+                public void onActivityResult(Boolean result) {
+                    execRequestPermissionResultCallback(result, null);
+                }
+            };
+        }
+        addActivityResultLauncher(specialPermission);
+    }
+
+    public MzPermission registerLocationSourceSettings() {
+        combineActivityResultLauncher(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+        return this;
     }
 
 
-    public interface OnDialogResultCallback extends OnResultCallback {
+    private Class<? extends AccessibilityService> mAccessibilityServiceClz;
 
-        void showRequestDialog(OnLaunchCallback onLaunchCallback);
+
+    /**
+     * android.permission.BIND_ACCESSIBILITY_SERVICE
+     *
+     * @param accessibilityServiceClz
+     * @return
+     */
+    public MzPermission registerAccessibilityService(@NonNull Class<? extends AccessibilityService> accessibilityServiceClz) {
+        this.mAccessibilityServiceClz = accessibilityServiceClz;
+        combineActivityResultLauncher(BIND_ACCESSIBILITY_SERVICE);
+        return this;
+    }
+
+    /**
+     * Permission is only granted to system app
+     * android.permission.WRITE_SETTINGS
+     *
+     * @return
+     */
+    public MzPermission registerWriteSettings() {
+        combineActivityResultLauncher(WRITE_SETTINGS);
+        return this;
+    }
+
+    /**
+     * android.permission.BIND_DEVICE_ADMIN
+     *
+     * @return
+     */
+    public MzPermission registerBindDeviceAdmin() {
+        combineActivityResultLauncher(BIND_DEVICE_ADMIN);
+        return this;
+    }
+
+    /**
+     * android.permission.REQUEST_INSTALL_PACKAGES
+     *
+     * @return
+     */
+    public MzPermission registerRequestInstallPackages() {
+        combineActivityResultLauncher(REQUEST_INSTALL_PACKAGES);
+        return this;
+    }
+
+    /**
+     * android.permission.MANAGE_EXTERNAL_STORAGE
+     *
+     * @return
+     */
+    public MzPermission registerManagerExternalStorage() {
+        combineActivityResultLauncher(MANAGE_EXTERNAL_STORAGE);
+        return this;
+    }
+
+    /**
+     * android.permission.ACCESS_NOTIFICATION_POLICY
+     *
+     * @return
+     */
+    public MzPermission registerAccessNotificationPolicy() {
+        combineActivityResultLauncher(ACCESS_NOTIFICATION_POLICY);
+        return this;
+    }
+
+
+    /**
+     * 非特殊权限申请
+     *
+     * @param callback
+     */
+    public void launch(RequestResultCallback callback) {
+        this.mRequestResultCallback = callback;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            mNormalLauncher.launch(mNormalPermissions);
+            return;
+        }
+        if (mRequestResultCallback != null) {
+            mRequestResultCallback.onPermissionGranted();
+        }
+    }
+
+    /**
+     * Show settings to allow configuration of current location sources.
+     *
+     * @param callback
+     */
+    public void launchLocationSourceSettings(RequestResultCallback callback) {
+        checkPermission(callback, new PermissionCheckCallback() {
+            @Override
+            public boolean checkPermission() {
+                return isGPSProviderEnabled(mContext);
+            }
+
+            @Override
+            public void requestPermission() {
+                launchPermissionRequest(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+            }
+        });
+    }
+
+    /**
+     * android.permission.REQUEST_INSTALL_PACKAGES
+     *
+     * @param callback
+     */
+    public void launchRequestInstallPackages(RequestResultCallback callback) {
+        checkPermission(callback, new PermissionCheckCallback() {
+            @Override
+            public boolean checkPermission() {
+                return canRequestPackageInstalls(mContext);
+            }
+
+            @Override
+            public void requestPermission() {
+                launchPermissionRequest(REQUEST_INSTALL_PACKAGES);
+            }
+        });
+    }
+
+    /**
+     * Permission is only granted to system app
+     * android.permission.WRITE_SETTINGS
+     *
+     * @param callback
+     */
+    public void launchWriteSettings(RequestResultCallback callback) {
+        checkPermission(callback, new PermissionCheckCallback() {
+            @Override
+            public boolean checkPermission() {
+                return canWrite(mContext);
+            }
+
+            @Override
+            public void requestPermission() {
+                launchPermissionRequest(WRITE_SETTINGS);
+            }
+        });
+    }
+
+    /**
+     * android.permission.MANAGE_EXTERNAL_STORAGE
+     *
+     * @param callback
+     */
+    public void launchManagerExternalStorage(RequestResultCallback callback) {
+        checkPermission(callback, new PermissionCheckCallback() {
+            @Override
+            public boolean checkPermission() {
+                return isExternalStorageManager();
+            }
+
+            @Override
+            public void requestPermission() {
+                launchPermissionRequest(MANAGE_EXTERNAL_STORAGE);
+            }
+        });
+    }
+
+
+    /**
+     * android.permission.MANAGE_EXTERNAL_STORAGE
+     * android.permission.READ_EXTERNAL_STORAGE
+     * android.permission.WRITE_EXTERNAL_STORAGE
+     *
+     * @param callback
+     */
+    public void launchExternalStorage(RequestResultCallback callback) {
+        this.mRequestResultCallback = callback;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            launchManagerExternalStorage(callback);
+            return;
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            request(EXTERNAL_STORAGE).launch(callback);
+            return;
+        }
+        if (mRequestResultCallback != null) {
+            mRequestResultCallback.onPermissionGranted();
+        }
+    }
+
+
+    /**
+     * android.permission.BIND_DEVICE_ADMIN
+     *
+     * @param callback
+     */
+    public void launchBindDeviceAdmin(RequestResultCallback callback) {
+        checkPermission(callback, new PermissionCheckCallback() {
+            @Override
+            public boolean checkPermission() {
+                return PermissionCheckUtils.isAdminActive(mContext);
+            }
+
+            @Override
+            public void requestPermission() {
+                launchPermissionRequest(BIND_DEVICE_ADMIN);
+            }
+        });
 
     }
 
-    public interface OnLaunchCallback {
-        void allowLaunch();
+    /**
+     * android.permission.ACCESS_NOTIFICATION_POLICY
+     *
+     * @param callback
+     */
+    public void launchAccessNotificationPolicy(RequestResultCallback callback) {
+        checkPermission(callback, new PermissionCheckCallback() {
+            @Override
+            public boolean checkPermission() {
+                return areNotificationsEnabled(mContext);
+            }
+
+            @Override
+            public void requestPermission() {
+                launchPermissionRequest(ACCESS_NOTIFICATION_POLICY);
+            }
+        });
     }
+
+    /**
+     * android.permission.BIND_ACCESSIBILITY_SERVICE
+     *
+     * @param callback
+     */
+    public void launchAccessibilityService(RequestResultCallback callback) {
+        checkPermission(callback, new PermissionCheckCallback() {
+            @Override
+            public boolean checkPermission() {
+                return PermissionCheckUtils.accessibilityServiceEnabled(mContext, mAccessibilityServiceClz);
+            }
+
+            @Override
+            public void requestPermission() {
+                launchPermissionRequest(BIND_ACCESSIBILITY_SERVICE);
+            }
+        });
+    }
+
+    private void launchPermissionRequest(String permission) {
+        launchPermissionRequest(new PermissionRequestCallback() {
+            @Override
+            public void allowRequest() {
+                getSpecialLauncher(permission).launch(null);
+            }
+        });
+    }
+
+
+    private void launchPermissionRequest(PermissionRequestCallback callback) {
+        if (mRequestResultCallback != null && mRequestResultCallback instanceof DialogRequestResultCallback) {
+            DialogRequestResultCallback dialogResultCallback = (DialogRequestResultCallback) mRequestResultCallback;
+            dialogResultCallback.showRequestDialog(callback);
+            return;
+        }
+        callback.allowRequest();
+    }
+
+
+    private void checkPermission(RequestResultCallback requestResultCallback, @NonNull PermissionCheckCallback checkCallback) {
+        this.mRequestResultCallback = requestResultCallback;
+        if (checkCallback.checkPermission()) {
+            if (mRequestResultCallback != null) {
+                mRequestResultCallback.onPermissionGranted();
+            }
+            return;
+        }
+        checkCallback.requestPermission();
+    }
+
 }

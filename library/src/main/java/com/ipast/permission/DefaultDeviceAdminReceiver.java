@@ -5,10 +5,10 @@ import android.content.Context;
 import android.content.Intent;
 import android.util.Log;
 
-public class MzDeviceAdminReceiver extends DeviceAdminReceiver {
+public class DefaultDeviceAdminReceiver extends DeviceAdminReceiver {
     private final String TAG = getClass().getSimpleName();
 
-    public MzDeviceAdminReceiver() {
+    public DefaultDeviceAdminReceiver() {
     }
 
     @Override

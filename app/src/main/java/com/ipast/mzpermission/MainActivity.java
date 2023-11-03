@@ -7,6 +7,10 @@ import android.util.Log;
 import android.view.View;
 
 import com.ipast.permission.MzPermission;
+import com.ipast.permission.Permissions;
+import com.ipast.permission.callback.DialogRequestResultCallback;
+import com.ipast.permission.callback.PermissionRequestCallback;
+import com.ipast.permission.callback.RequestResultCallback;
 import com.kongzue.dialogx.dialogs.MessageDialog;
 import com.kongzue.dialogx.interfaces.OnDialogButtonClickListener;
 
@@ -19,28 +23,29 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         mzPermission = new MzPermission(this)
-                .registerAccessNotificationPolicyResult()
-                .registerWriteSettingsResult()
-                .registerManagerExternalStorageResult()
-                .registerRequestInstallPackagesResult()
-                .registerBindDeviceAdminResult()
-                .registerAccessibilityServiceResult(MyAccessibilityService.class)
-                .registerLocationSourceSettingsResult();
-        // requestExternalStoragePermission();
-        // requestBindDeviceAdmin();
+                .registerForActivityResult()
+                .registerAccessNotificationPolicy()
+                .registerWriteSettings()
+                .registerManagerExternalStorage()
+                .registerRequestInstallPackages()
+                .registerBindDeviceAdmin()
+                .registerAccessibilityService(MyAccessibilityService.class)
+                .registerLocationSourceSettings();
+         //requestExternalStoragePermission();
+         requestBindDeviceAdmin();
         // requestAccessibilityService();
-        requestLocationSourceSettings();
+        //requestLocationSourceSettings();
     }
 
     private void requestLocationSourceSettings() {
-        mzPermission.launchLocationSourceSettings(new MzPermission.OnDialogResultCallback() {
+        mzPermission.launchLocationSourceSettings(new DialogRequestResultCallback() {
             @Override
-            public void showRequestDialog(MzPermission.OnLaunchCallback callback) {
+            public void showRequestDialog(PermissionRequestCallback callback) {
                 MessageDialog.show("权限申请", "需要使用位置信息权限，请手动开启！", "确定", "取消")
                         .setOkButton(new OnDialogButtonClickListener<MessageDialog>() {
                             @Override
                             public boolean onClick(MessageDialog baseDialog, View v) {
-                                callback.allowLaunch();
+                                callback.allowRequest();
                                 return false;
                             }
                         })
@@ -67,14 +72,14 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void requestAccessibilityService() {
-        mzPermission.launchAccessibilityService(new MzPermission.OnDialogResultCallback() {
+        mzPermission.launchAccessibilityService(new DialogRequestResultCallback() {
             @Override
-            public void showRequestDialog(MzPermission.OnLaunchCallback callback) {
+            public void showRequestDialog(PermissionRequestCallback callback) {
                 MessageDialog.show("权限申请", "需要打开无障碍辅助权限，请手动开启！", "确定", "取消")
                         .setOkButton(new OnDialogButtonClickListener<MessageDialog>() {
                             @Override
                             public boolean onClick(MessageDialog baseDialog, View v) {
-                                callback.allowLaunch();
+                                callback.allowRequest();
                                 return false;
                             }
                         })
@@ -101,7 +106,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void requestBindDeviceAdmin() {
-        mzPermission.launchBindDeviceAdmin(new MzPermission.OnResultCallback() {
+        mzPermission.launchBindDeviceAdmin(new RequestResultCallback() {
             @Override
             public void onPermissionGranted() {
 
@@ -115,14 +120,14 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void requestInstallPackages() {
-        mzPermission.launchRequestInstallPackages(new MzPermission.OnDialogResultCallback() {
+        mzPermission.launchRequestInstallPackages(new DialogRequestResultCallback() {
             @Override
-            public void showRequestDialog(MzPermission.OnLaunchCallback callback) {
+            public void showRequestDialog(PermissionRequestCallback callback) {
                 MessageDialog.show("权限申请", "需要开启应用通知权限，请手动开启！", "确定", "取消")
                         .setOkButton(new OnDialogButtonClickListener<MessageDialog>() {
                             @Override
                             public boolean onClick(MessageDialog baseDialog, View v) {
-                                callback.allowLaunch();
+                                callback.allowRequest();
                                 return false;
                             }
                         })
@@ -149,7 +154,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void requestExternalStoragePermission() {
-        mzPermission.launchManagerExternalStorage(new MzPermission.OnResultCallback() {
+        mzPermission.launchManagerExternalStorage(new RequestResultCallback() {
             @Override
             public void onPermissionGranted() {
 
@@ -163,8 +168,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void requestNormalPermissions() {
-        mzPermission.request(MzPermission.EXTERNAL_STORAGE)
-                .launch(new MzPermission.OnResultCallback() {
+        mzPermission.request(Permissions.EXTERNAL_STORAGE)
+                .launch(new RequestResultCallback() {
                     @Override
                     public void onPermissionGranted() {
                         Log.d(TAG, "onPermissionGranted()");

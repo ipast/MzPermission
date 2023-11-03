@@ -4,7 +4,7 @@
     <application>
 
     <receiver
-        android:name=".MzDeviceAdminReceiver"
+        android:name=".DefaultDeviceAdminReceiver"
         android:enabled="true"
         android:exported="true"
         android:permission="android.permission.BIND_DEVICE_ADMIN">
