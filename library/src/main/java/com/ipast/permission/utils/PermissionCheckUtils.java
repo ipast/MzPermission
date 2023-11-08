@@ -15,7 +15,6 @@ import android.util.Log;
 import androidx.core.app.NotificationManagerCompat;
 
 import com.ipast.permission.DefaultDeviceAdminReceiver;
-import com.ipast.permission.utils.rom.ROMUtils;
 
 
 /**
@@ -137,5 +136,17 @@ public class PermissionCheckUtils {
         return locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER);
     }
 
+    /**
+     * {@link android.Manifest.permission#SYSTEM_ALERT_WINDOW} permission
+     *
+     * @param context
+     * @return
+     */
+    public static boolean canDrawOverlays(Context context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            return true;
+        }
+        return Settings.canDrawOverlays(context);
+    }
 
 }

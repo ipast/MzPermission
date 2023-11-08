@@ -1,4 +1,4 @@
-package com.ipast.permission.utils.rom;
+package com.ipast.permission.utils;
 
 import android.annotation.SuppressLint;
 import android.os.Build;
@@ -466,5 +466,41 @@ public final class ROMUtils {
         }
         romInfo.setVersion(getRomVersion(""));
         return romInfo;
+    }
+
+    public static class RomInfo {
+        private String name;
+        private String version;
+
+        public void setName(String name) {
+            this.name = name;
+        }
+
+        public void setVersion(String version) {
+            this.version = version;
+        }
+
+        /**
+         * 获取 ROM 名称
+         *
+         * @return ROM 名称
+         */
+        public String getName() {
+            return name;
+        }
+
+        /**
+         * 获取 ROM 版本信息
+         *
+         * @return ROM 版本信息
+         */
+        public String getVersion() {
+            return version;
+        }
+
+        @Override
+        public String toString() {
+            return "RomInfo{name=" + name + ", version=" + version + "}";
+        }
     }
 }

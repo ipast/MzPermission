@@ -5,7 +5,7 @@ package com.ipast.permission.callback;
  * description:
  * date:2023/10/30
  */
-public interface DialogRequestResultCallback extends RequestResultCallback {
+public interface DialogPermissionRequestCallback extends PermissionRequestResultCallback {
 
     void showRequestDialog(PermissionRequestCallback permissionRequestCallback);
 

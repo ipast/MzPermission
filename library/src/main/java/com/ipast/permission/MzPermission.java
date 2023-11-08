@@ -15,16 +15,18 @@ import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.fragment.app.Fragment;
 
-import com.ipast.permission.callback.DialogRequestResultCallback;
+import com.ipast.permission.callback.DialogPermissionRequestCallback;
 import com.ipast.permission.callback.PermissionCheckCallback;
+import com.ipast.permission.callback.PermissionLaunchCallback;
 import com.ipast.permission.callback.PermissionRequestCallback;
-import com.ipast.permission.callback.RequestResultCallback;
+import com.ipast.permission.callback.PermissionRequestResultCallback;
 import com.ipast.permission.contract.AccessNotificationPolicyResultContract;
 import com.ipast.permission.contract.AccessibilityServiceResultContract;
 import com.ipast.permission.contract.AppManagerExternalStorageResultContract;
 import com.ipast.permission.contract.BindDeviceAdminResultContract;
 import com.ipast.permission.contract.LocationSourceSettingsResultContract;
 import com.ipast.permission.contract.RequestInstallPackagesResultContract;
+import com.ipast.permission.contract.SystemAlertWindowResultContract;
 import com.ipast.permission.contract.WriteSettingsResultContract;
 import com.ipast.permission.utils.PermissionCheckUtils;
 
@@ -38,6 +40,7 @@ import static android.Manifest.permission.BIND_ACCESSIBILITY_SERVICE;
 import static android.Manifest.permission.BIND_DEVICE_ADMIN;
 import static android.Manifest.permission.MANAGE_EXTERNAL_STORAGE;
 import static android.Manifest.permission.REQUEST_INSTALL_PACKAGES;
+import static android.Manifest.permission.SYSTEM_ALERT_WINDOW;
 import static android.Manifest.permission.WRITE_SETTINGS;
 import static com.ipast.permission.utils.PermissionCheckUtils.areNotificationsEnabled;
 import static com.ipast.permission.utils.PermissionCheckUtils.canRequestPackageInstalls;
@@ -57,12 +60,10 @@ public class MzPermission {
     private ActivityResultCaller mCaller;
     private Context mContext;
 
-    private String[] mNormalPermissions;
-
     private ActivityResultLauncher<String[]> mNormalLauncher;
     private HashMap<String, ActivityResultLauncher<Void>> mSpecialLaunchers;
 
-    private RequestResultCallback mRequestResultCallback;
+    private PermissionRequestResultCallback mPermissionRequestResultCallback;
     private ActivityResultCallback<Boolean> mSpecialCallback;
 
 
@@ -76,24 +77,49 @@ public class MzPermission {
         this.mContext = fragment.getContext();
     }
 
+    private String[] mNormalPermissions;
+
     public MzPermission request(@NonNull String... permissions) {
         this.mNormalPermissions = permissions;
         return this;
     }
 
+    private void registerForActivityResult(@NonNull String permission) {
+        ActivityResultLauncher<Void> launcher = getActivityResultLauncher(permission);
+        addActivityResultLauncher(permission, launcher);
+    }
 
-    private void addActivityResultLauncher(@NonNull String specialPermission) {
-        ActivityResultLauncher<Void> launcher = getActivityResultLauncher(specialPermission);
+    private void addActivityResultLauncher(@NonNull String permission, ActivityResultLauncher<Void> launcher) {
         if (launcher == null) {
             return;
         }
-        mSpecialLaunchers.put(specialPermission, launcher);
+        if (mSpecialLaunchers == null) {
+            mSpecialLaunchers = new HashMap<>();
+        }
+        mSpecialLaunchers.put(permission, launcher);
+    }
+
+    public void registerForActivityResult(@NonNull String permission, ActivityResultContract<Void, Boolean> contract) {
+        ActivityResultLauncher<Void> launcher = registerForActivityResult(contract);
+        addActivityResultLauncher(permission, launcher);
     }
 
     private ActivityResultLauncher<Void> getActivityResultLauncher(String permission) {
         ActivityResultContract<Void, Boolean> contract = getActivityResultContract(permission);
         if (contract == null) {
             return null;
+        }
+        return registerForActivityResult(contract);
+    }
+
+    private ActivityResultLauncher<Void> registerForActivityResult(ActivityResultContract<Void, Boolean> contract) {
+        if (mSpecialCallback == null) {
+            mSpecialCallback = new ActivityResultCallback<Boolean>() {
+                @Override
+                public void onActivityResult(Boolean result) {
+                    execRequestPermissionResultCallback(result, null);
+                }
+            };
         }
         return mCaller.registerForActivityResult(contract, mSpecialCallback);
     }
@@ -114,6 +140,8 @@ public class MzPermission {
                 return new AccessibilityServiceResultContract(mAccessibilityServiceClz);
             case Settings.ACTION_LOCATION_SOURCE_SETTINGS:
                 return new LocationSourceSettingsResultContract();
+            case SYSTEM_ALERT_WINDOW:
+                return new SystemAlertWindowResultContract();
             default:
                 Log.d(TAG, "unknown permission : " + permission);
                 return null;
@@ -165,33 +193,23 @@ public class MzPermission {
     }
 
     private void execRequestPermissionResultCallback(boolean isGranted, String[] deniedPermissions) {
-        if (mRequestResultCallback == null) {
+        if (mPermissionRequestResultCallback == null) {
             return;
         }
         if (isGranted) {
-            mRequestResultCallback.onPermissionGranted();
+            mPermissionRequestResultCallback.onPermissionGranted();
             return;
         }
-        mRequestResultCallback.onPermissionsDenied(deniedPermissions);
+        mPermissionRequestResultCallback.onPermissionsDenied(deniedPermissions);
     }
 
-    private void combineActivityResultLauncher(@NonNull String specialPermission) {
-        if (mSpecialLaunchers == null) {
-            mSpecialLaunchers = new HashMap<>();
-        }
-        if (mSpecialCallback == null) {
-            mSpecialCallback = new ActivityResultCallback<Boolean>() {
-                @Override
-                public void onActivityResult(Boolean result) {
-                    execRequestPermissionResultCallback(result, null);
-                }
-            };
-        }
-        addActivityResultLauncher(specialPermission);
+    public MzPermission registerSystemAlertWindow() {
+        registerForActivityResult(SYSTEM_ALERT_WINDOW);
+        return this;
     }
 
     public MzPermission registerLocationSourceSettings() {
-        combineActivityResultLauncher(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+        registerForActivityResult(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
         return this;
     }
 
@@ -207,7 +225,7 @@ public class MzPermission {
      */
     public MzPermission registerAccessibilityService(@NonNull Class<? extends AccessibilityService> accessibilityServiceClz) {
         this.mAccessibilityServiceClz = accessibilityServiceClz;
-        combineActivityResultLauncher(BIND_ACCESSIBILITY_SERVICE);
+        registerForActivityResult(BIND_ACCESSIBILITY_SERVICE);
         return this;
     }
 
@@ -218,7 +236,7 @@ public class MzPermission {
      * @return
      */
     public MzPermission registerWriteSettings() {
-        combineActivityResultLauncher(WRITE_SETTINGS);
+        registerForActivityResult(WRITE_SETTINGS);
         return this;
     }
 
@@ -228,7 +246,7 @@ public class MzPermission {
      * @return
      */
     public MzPermission registerBindDeviceAdmin() {
-        combineActivityResultLauncher(BIND_DEVICE_ADMIN);
+        registerForActivityResult(BIND_DEVICE_ADMIN);
         return this;
     }
 
@@ -238,7 +256,7 @@ public class MzPermission {
      * @return
      */
     public MzPermission registerRequestInstallPackages() {
-        combineActivityResultLauncher(REQUEST_INSTALL_PACKAGES);
+        registerForActivityResult(REQUEST_INSTALL_PACKAGES);
         return this;
     }
 
@@ -248,7 +266,7 @@ public class MzPermission {
      * @return
      */
     public MzPermission registerManagerExternalStorage() {
-        combineActivityResultLauncher(MANAGE_EXTERNAL_STORAGE);
+        registerForActivityResult(MANAGE_EXTERNAL_STORAGE);
         return this;
     }
 
@@ -258,7 +276,7 @@ public class MzPermission {
      * @return
      */
     public MzPermission registerAccessNotificationPolicy() {
-        combineActivityResultLauncher(ACCESS_NOTIFICATION_POLICY);
+        registerForActivityResult(ACCESS_NOTIFICATION_POLICY);
         return this;
     }
 
@@ -268,15 +286,29 @@ public class MzPermission {
      *
      * @param callback
      */
-    public void launch(RequestResultCallback callback) {
-        this.mRequestResultCallback = callback;
+    public void launch(PermissionRequestResultCallback callback) {
+        this.mPermissionRequestResultCallback = callback;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             mNormalLauncher.launch(mNormalPermissions);
             return;
         }
-        if (mRequestResultCallback != null) {
-            mRequestResultCallback.onPermissionGranted();
+        if (mPermissionRequestResultCallback != null) {
+            mPermissionRequestResultCallback.onPermissionGranted();
         }
+    }
+
+    public void launchSystemAlertWindow(PermissionRequestResultCallback callback) {
+        checkSelfPermission(callback, new PermissionCheckCallback() {
+            @Override
+            public boolean checkPermission() {
+                return PermissionCheckUtils.canDrawOverlays(mContext);
+            }
+        }, new PermissionLaunchCallback() {
+            @Override
+            public void requestPermission() {
+                launchPermissionRequest(SYSTEM_ALERT_WINDOW);
+            }
+        });
     }
 
     /**
@@ -284,13 +316,13 @@ public class MzPermission {
      *
      * @param callback
      */
-    public void launchLocationSourceSettings(RequestResultCallback callback) {
-        checkPermission(callback, new PermissionCheckCallback() {
+    public void launchLocationSourceSettings(PermissionRequestResultCallback callback) {
+        checkSelfPermission(callback, new PermissionCheckCallback() {
             @Override
             public boolean checkPermission() {
                 return isGPSProviderEnabled(mContext);
             }
-
+        }, new PermissionLaunchCallback() {
             @Override
             public void requestPermission() {
                 launchPermissionRequest(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
@@ -303,13 +335,13 @@ public class MzPermission {
      *
      * @param callback
      */
-    public void launchRequestInstallPackages(RequestResultCallback callback) {
-        checkPermission(callback, new PermissionCheckCallback() {
+    public void launchRequestInstallPackages(PermissionRequestResultCallback callback) {
+        checkSelfPermission(callback, new PermissionCheckCallback() {
             @Override
             public boolean checkPermission() {
                 return canRequestPackageInstalls(mContext);
             }
-
+        }, new PermissionLaunchCallback() {
             @Override
             public void requestPermission() {
                 launchPermissionRequest(REQUEST_INSTALL_PACKAGES);
@@ -323,13 +355,13 @@ public class MzPermission {
      *
      * @param callback
      */
-    public void launchWriteSettings(RequestResultCallback callback) {
-        checkPermission(callback, new PermissionCheckCallback() {
+    public void launchWriteSettings(PermissionRequestResultCallback callback) {
+        checkSelfPermission(callback, new PermissionCheckCallback() {
             @Override
             public boolean checkPermission() {
                 return canWrite(mContext);
             }
-
+        }, new PermissionLaunchCallback() {
             @Override
             public void requestPermission() {
                 launchPermissionRequest(WRITE_SETTINGS);
@@ -342,12 +374,13 @@ public class MzPermission {
      *
      * @param callback
      */
-    public void launchManagerExternalStorage(RequestResultCallback callback) {
-        checkPermission(callback, new PermissionCheckCallback() {
+    public void launchManagerExternalStorage(PermissionRequestResultCallback callback) {
+        checkSelfPermission(callback, new PermissionCheckCallback() {
             @Override
             public boolean checkPermission() {
                 return isExternalStorageManager();
             }
+        }, new PermissionLaunchCallback() {
 
             @Override
             public void requestPermission() {
@@ -364,8 +397,8 @@ public class MzPermission {
      *
      * @param callback
      */
-    public void launchExternalStorage(RequestResultCallback callback) {
-        this.mRequestResultCallback = callback;
+    public void launchExternalStorage(PermissionRequestResultCallback callback) {
+        this.mPermissionRequestResultCallback = callback;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             launchManagerExternalStorage(callback);
             return;
@@ -374,8 +407,8 @@ public class MzPermission {
             request(EXTERNAL_STORAGE).launch(callback);
             return;
         }
-        if (mRequestResultCallback != null) {
-            mRequestResultCallback.onPermissionGranted();
+        if (mPermissionRequestResultCallback != null) {
+            mPermissionRequestResultCallback.onPermissionGranted();
         }
     }
 
@@ -385,13 +418,13 @@ public class MzPermission {
      *
      * @param callback
      */
-    public void launchBindDeviceAdmin(RequestResultCallback callback) {
-        checkPermission(callback, new PermissionCheckCallback() {
+    public void launchBindDeviceAdmin(PermissionRequestResultCallback callback) {
+        checkSelfPermission(callback, new PermissionCheckCallback() {
             @Override
             public boolean checkPermission() {
                 return PermissionCheckUtils.isAdminActive(mContext);
             }
-
+        }, new PermissionLaunchCallback() {
             @Override
             public void requestPermission() {
                 launchPermissionRequest(BIND_DEVICE_ADMIN);
@@ -405,13 +438,13 @@ public class MzPermission {
      *
      * @param callback
      */
-    public void launchAccessNotificationPolicy(RequestResultCallback callback) {
-        checkPermission(callback, new PermissionCheckCallback() {
+    public void launchAccessNotificationPolicy(PermissionRequestResultCallback callback) {
+        checkSelfPermission(callback, new PermissionCheckCallback() {
             @Override
             public boolean checkPermission() {
                 return areNotificationsEnabled(mContext);
             }
-
+        }, new PermissionLaunchCallback() {
             @Override
             public void requestPermission() {
                 launchPermissionRequest(ACCESS_NOTIFICATION_POLICY);
@@ -424,18 +457,46 @@ public class MzPermission {
      *
      * @param callback
      */
-    public void launchAccessibilityService(RequestResultCallback callback) {
-        checkPermission(callback, new PermissionCheckCallback() {
+    public void launchAccessibilityService(PermissionRequestResultCallback callback) {
+        checkSelfPermission(callback, new PermissionCheckCallback() {
             @Override
             public boolean checkPermission() {
                 return PermissionCheckUtils.accessibilityServiceEnabled(mContext, mAccessibilityServiceClz);
             }
-
+        }, new PermissionLaunchCallback() {
             @Override
             public void requestPermission() {
                 launchPermissionRequest(BIND_ACCESSIBILITY_SERVICE);
             }
         });
+    }
+
+    private void checkSelfPermission(PermissionRequestResultCallback permissionRequestResultCallback,
+                                     PermissionCheckCallback permissionCheckCallback,
+                                     @NonNull PermissionLaunchCallback permissionLaunchCallback) {
+        this.mPermissionRequestResultCallback = permissionRequestResultCallback;
+        if (permissionCheckCallback != null && permissionCheckCallback.checkPermission()) {
+            if (mPermissionRequestResultCallback != null) {
+                mPermissionRequestResultCallback.onPermissionGranted();
+            }
+            return;
+        }
+        permissionLaunchCallback.requestPermission();
+    }
+
+    public void launchPermissionRequest(String permission, PermissionRequestResultCallback permissionRequestResultCallback) {
+        launchPermissionRequest(permission, null, permissionRequestResultCallback);
+    }
+
+    public void launchPermissionRequest(String permission, @NonNull PermissionCheckCallback checkCallback,
+                                        PermissionRequestResultCallback permissionRequestResultCallback) {
+        checkSelfPermission(permissionRequestResultCallback, checkCallback, new PermissionLaunchCallback() {
+            @Override
+            public void requestPermission() {
+                launchPermissionRequest(permission);
+            }
+        });
+
     }
 
     private void launchPermissionRequest(String permission) {
@@ -449,24 +510,13 @@ public class MzPermission {
 
 
     private void launchPermissionRequest(PermissionRequestCallback callback) {
-        if (mRequestResultCallback != null && mRequestResultCallback instanceof DialogRequestResultCallback) {
-            DialogRequestResultCallback dialogResultCallback = (DialogRequestResultCallback) mRequestResultCallback;
+        if (mPermissionRequestResultCallback != null && mPermissionRequestResultCallback instanceof DialogPermissionRequestCallback) {
+            DialogPermissionRequestCallback dialogResultCallback = (DialogPermissionRequestCallback) mPermissionRequestResultCallback;
             dialogResultCallback.showRequestDialog(callback);
             return;
         }
         callback.allowRequest();
     }
 
-
-    private void checkPermission(RequestResultCallback requestResultCallback, @NonNull PermissionCheckCallback checkCallback) {
-        this.mRequestResultCallback = requestResultCallback;
-        if (checkCallback.checkPermission()) {
-            if (mRequestResultCallback != null) {
-                mRequestResultCallback.onPermissionGranted();
-            }
-            return;
-        }
-        checkCallback.requestPermission();
-    }
 
 }

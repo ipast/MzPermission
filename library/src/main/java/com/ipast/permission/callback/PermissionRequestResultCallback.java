@@ -5,8 +5,8 @@ package com.ipast.permission.callback;
  * description:
  * date:2023/10/30
  */
-public interface RequestResultCallback {
+public interface PermissionRequestResultCallback {
     void onPermissionGranted();
 
-    void onPermissionsDenied(String... permissions);
+    void onPermissionsDenied(String[] permissions);
 }
